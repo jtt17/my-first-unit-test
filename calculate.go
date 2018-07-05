@@ -11,14 +11,13 @@ import (
 )
 
 func adjustNumber(x string) string { // make the input number more standard
-	negative := ""
-	x = strings.Replace(x, " ", "", -1)
-	if len(x) == 0 {
+	if isvalid(x) == false || len(x) == 0 {
 		return "0"
 	}
+	negative := ""
 	if x[0] == '-' {
 		negative += "-"
-		x = strings.TrimLeft(x, "-")
+		x = x[1:]
 	}
 	x = strings.Trim(x, "0")
 	x = strings.TrimRight(x, ".")
@@ -37,24 +36,27 @@ func isvalid(number string) bool { //judge whether the number is valid
 		pointCnt int  = 0
 		hasDigit bool = false
 	)
+	if length == 0 {
+		return false
+	}
 	for i := 0; i < length; i++ {
 		if number[i] < '0' || number[i] > '9' {
 			if number[i] == '.' {
 				pointCnt++
-				if pointCnt > 1 {
+				if pointCnt > 1 { //two many decimal point
 					return false
 				}
-				if i == length-1 {
+				if i == length-1 { // there's no digit after points
 					return false
 				}
-				if hasDigit == false {
+				if hasDigit == false { // there's no digit before points
 					return false
 				}
 
 			} else if number[i] == '-' {
-				if i != 0 {
+				if i != 0 { // symbol should at the beginning of number
 					return false
-				} else if i == 0 && length == 1 {
+				} else if i == 0 && length == 1 { // only symbol
 					return false
 				}
 			} else {
@@ -151,7 +153,7 @@ func addd(lst, rst string) string { // two unsigned number addition
 		return "0"
 	}
 	if result[0] == '.' {
-		return "0" + result
+		result = "0" + result
 	}
 	return adjustNumber(result)
 }
@@ -163,11 +165,11 @@ func add(lst, rst string) string { // deal with differ situation
 	lst = adjustNumber(lst)
 	rst = adjustNumber(rst)
 	if lst[0] == '-' && rst[0] == '-' {
-		return "-" + addd(strings.TrimLeft(lst, "-"), strings.TrimLeft(rst, "-"))
+		return "-" + addd(lst[1:], rst[1:])
 	} else if lst[0] == '-' && rst[0] != '-' {
-		return subb(rst, strings.TrimLeft(lst, "-"))
+		return subb(rst, lst[1:])
 	} else if lst[0] != '-' && rst[0] == '-' {
-		return subb(lst, strings.TrimLeft(rst, "-"))
+		return subb(lst, rst[1:])
 	} else { //if lst[0] != '-' && rst[0] != '-'
 		return addd(lst, rst)
 	}
@@ -210,10 +212,7 @@ func subb(lst, rst string) string { // two unsigned real number subtraction
 		lst, rst = rst, lst
 		lenl, lenr = lenr, lenl
 	}
-	fmt.Printf("%d %d %s %s\n", lenl, lenr, lst, rst)
-	array1 := []byte(lst)
-
-	//	fmt.Println("array :", array1)
+	array1 := []byte(lst) //directly get the slice of string 'lst'
 	for i := 0; i < lenl || i < lenr; i++ {
 		if lst[lenl-i-1] == '.' {
 			continue
@@ -226,7 +225,7 @@ func subb(lst, rst string) string { // two unsigned real number subtraction
 				if lenl-i-3 >= 0 {
 					array1[lenl-i-3] -= 1
 				} else {
-					fmt.Printf("something wrong\n")
+					fmt.Printf("unreachable position!!\n")
 				}
 
 			}
@@ -234,7 +233,6 @@ func subb(lst, rst string) string { // two unsigned real number subtraction
 		if i < lenr {
 			array1[lenl-i-1] -= byte(rst[lenr-i-1])
 			array1[lenl-i-1] += byte('0')
-			//		fmt.Println("array :", array1)
 		}
 		if array1[lenl-i-1] < byte('0') {
 			array1[lenl-i-1] += 10
@@ -264,13 +262,13 @@ func sub(lst, rst string) string { // deal with differ situation
 	lst = adjustNumber(lst)
 	rst = adjustNumber(rst)
 	if lst[0] == '-' && rst[0] == '-' {
-		return subb(strings.TrimLeft(rst, "-"), strings.TrimLeft(lst, "-"))
+		return subb(rst[1:], lst[1:])
 	} else if lst[0] != '-' && rst[0] == '-' {
-		return add(strings.TrimLeft(rst, "-"), lst)
+		return add(rst[1:], lst)
 	} else if lst[0] != '-' && rst[0] != '-' {
 		return subb(lst, rst)
 	} else { //if lst[0] == '-' && rst[0] != '-'
-		return "-" + add(rst, strings.TrimLeft(lst, "-"))
+		return "-" + add(rst, lst[1:])
 	}
 }
 
