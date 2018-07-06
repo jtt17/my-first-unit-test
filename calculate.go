@@ -6,7 +6,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -271,14 +273,63 @@ func sub(lst, rst string) string { // deal with differ situation
 		return "-" + add(rst, lst[1:])
 	}
 }
+func min(a, b int) int {
+	if a > b {
+		return b
+	}
+	return a
+}
+func getInput() (string, string, string) {
+	var err error
+	reader := bufio.NewReader(os.Stdin)
+	var s string
+	for {
+		s, err = reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("input error")
+			continue
+		}
+		s = strings.Replace(s, " ", "", -1)
+		s = strings.Replace(s, "(", "", -1)
+		s = strings.Replace(s, ")", "", -1)
+		//	s = strings.Replace(s, "\n", "", -1)
+		s = strings.TrimSpace(s)
+		//		fmt.Printf("after :%s %d\n", s, len(s))
+		firstSymbol := strings.Index(s, "+")
+		if tmp := strings.Index(s, "-"); tmp != -1 {
+			firstSymbol = min(firstSymbol, tmp)
+		}
 
+		if firstSymbol == -1 {
+			return s, "", ""
+		} else if firstSymbol == 0 {
+			ss := s[1:]
+			secondSymbol := strings.Index(ss, "+")
+			if tmp := strings.Index(ss, "-"); tmp != -1 {
+				secondSymbol = min(secondSymbol, tmp)
+			}
+			if secondSymbol == -1 {
+				return s, "=", ""
+			} else {
+				return s[0 : secondSymbol+1], string(ss[secondSymbol]), ss[secondSymbol+1:]
+			}
+		} else {
+			return s[0:firstSymbol], s[firstSymbol : firstSymbol+1], s[firstSymbol+1 : len(s)]
+		}
+
+	}
+
+}
 func main() {
 	fmt.Println("This program Only support the addition and subtraction of real numbers")
 	fmt.Println("Input Q/q to exit")
 	for {
-		fmt.Println("please input a expression separate by space   format : a + b")
+		fmt.Println("please input a expression")
 		var num1, op, num2 string
-		fmt.Scanf("%s %s %s\n", &num1, &op, &num2)
+		//fmt.Scanf("%s %s %s\n", &num1, &op, &num2)
+
+		num1, op, num2 = getInput()
+		//	fmt.Printf("getresult :%d %s %d %s %d %s\n", len(num1), num1, len(op), op, len(num2), num2)
 		if num1 == "q" || num1 == "Q" {
 			break
 		}
@@ -286,6 +337,8 @@ func main() {
 			fmt.Printf("result = %s\n", add(num1, num2))
 		} else if op == "-" {
 			fmt.Printf("result = %s\n", sub(num1, num2))
+		} else if op == "=" {
+			fmt.Println("result = %s\n", num1)
 		} else {
 			fmt.Println("Invalid operation")
 		}
