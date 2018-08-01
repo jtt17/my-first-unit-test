@@ -1,15 +1,16 @@
-package main
+package logs
 
 import (
-	"encoding/json"
+//	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
-	//"strings"
+	"strings"
 	"time"
+	"sync"
 )
 
 type configuration struct {
@@ -31,10 +32,9 @@ const (
 	erro
 	fata
 )
-
 var (
 	program = filepath.Base(os.Args[0]) // program name
-
+	mu		 sync.Mutex
 	conf     configuration
 	flog     *log.Logger
 	now      time.Time
@@ -43,17 +43,21 @@ var (
 )
 /*
 func loadConf() {
-	file, _ := os.Open("./conf.json")
+	lastpath, _ := os.Getwd()
+	os.Chdir("/root/gopath/src/github.com/opensds/opensds/pkg/utils/logs/")
+	file, err := os.Open("conf.json")
 	defer file.Close()
-	decoder := json.NewDecoder(file)
-	err := decoder.Decode(&conf)
+	os.Chdir(lastpath)
 	if err != nil {
-		log.Fatal("Error occur when open conf.json")
+		Error("Error occur when open conf.json ", err)
 	}
-	conf.Path = filepath.Join(conf.Path, program)
-	conf.MaxSize *= 1024 * 1024
-	fmt.Println(conf)
-} */
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&conf)
+	if err != nil {
+		Error("Error occur when decode conf.json ", err)
+	}
+}*/
+
 func loadConf() {
 
 	conf.Path = filepath.Join("/var/log/opensds", strings.Split(program, ".")[0])
@@ -62,8 +66,9 @@ func loadConf() {
 	conf.Lmicroseconds = true
 	conf.LogToFile = true
 	conf.LogToStdErr = true
-	conf.MaxSize = 1
+	conf.MaxSize = 1024*1024 *1
 }
+
 func exits(path string) bool {
 	_, err := os.Stat(path)
 	if err != nil {
@@ -78,7 +83,7 @@ func mkdir() {
 	if exits(conf.Path) {
 		return
 	}
-	e := os.Mkdir(conf.Path, os.ModePerm)
+	e := os.MkdirAll(conf.Path, 0700)
 	if e != nil {
 		Fatal(e)
 	}
@@ -102,6 +107,7 @@ func init() {
 	log.SetFlags(tmp)
 	curFile, fileinfo = initFile(conf.Path)
 }
+
 func initFile(path string) (*os.File, *os.FileInfo) {
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
@@ -109,6 +115,7 @@ func initFile(path string) (*os.File, *os.FileInfo) {
 		return nil, nil
 	}
 	l := len(files)
+	fmt.Println("Got Log File List :",files)
 	if l == 0 {
 		return nil, nil
 	}
@@ -121,21 +128,29 @@ func initFile(path string) (*os.File, *os.FileInfo) {
 	}
 	tmpinfo, e2 := os.Stat(tmpfile.Name())
 	if e2 != nil {
-		return nil, nil
+		return nil,nil
 	}
+	fmt.Println("INIT: Now should USE FILE: ",tmpfile.Name())
 	return tmpfile, &tmpinfo
 }
-func open() (*os.File, *os.FileInfo) {
+
+func open()(*os.File,*os.FileInfo) {
+	if fileinfo == nil {
+		return nil,nil
+	}
+	fmt.Println("Attempt to OPEN file ",(*fileinfo).Name())
 	file, err := os.OpenFile(filepath.Join(conf.Path, (*fileinfo).Name()), os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
+		fmt.Println("OPEN: Can not open Log file",(*fileinfo).Name())
 		Error("can not open log file :", err)
 		return nil, nil
 	}
-    file.WriteString(fmt.Sprintf("Log file Append at: %v\n\n", time.Now().Format("2018-01-02 15:04:05.000000")))
+	fmt.Println("OPEN : open file success ",file.Name())
+//    file.WriteString(fmt.Sprintf("Log file Append at: %v\n\n", time.Now().Format("2018-01-02 15:04:05.000000")))
 	tmpinfo, _ := os.Stat(file.Name())
 	return file, &tmpinfo
 }
-func create() (*os.File, *os.FileInfo) {
+func create()(*os.File, *os.FileInfo)  {
 	name := fmt.Sprintf("%s %04d-%02d-%02d %02d.%02d.%02d.log",
 		filepath.Join(conf.Path, program),
 		time.Now().Year(),
@@ -144,16 +159,17 @@ func create() (*os.File, *os.FileInfo) {
 		time.Now().Hour(),
 		time.Now().Minute(),
 		time.Now().Second())
-
+	fmt.Println("CREATE : now create file ",name )
 	file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Printf("create file failed %v\n", err)
 		return nil, nil
 	}
 	file.WriteString(fmt.Sprintf("Log file Create at: %v\n\n", time.Now().Format("2018-01-02 15:04:05.000000")))
-	tmpinfo, e := os.Lstat(name)
+	tmpinfo ,e := os.Stat(name)
 	if e != nil {
-		Error("get fileinfo failed ", e)
+		fmt.Println("get fileinfo failed ",e)
+		return nil, nil
 	}
 	return file, &tmpinfo
 }
@@ -161,15 +177,16 @@ func create() (*os.File, *os.FileInfo) {
 //
 //
 func doPrint(s string) {
-
+	mu.Lock()
+	defer mu.Unlock()
+	curFile, fileinfo = open()
 	if fileinfo == nil || (uint64)((*fileinfo).Size()) >= conf.MaxSize {
+		fmt.Println("DOPRINT: but still need create ")
 		curFile, fileinfo = create()
-
-	} else {
-		curFile, fileinfo = open()
 	}
 	flog = log.New(curFile, "", log.Flags())
 	flog.Println(s)
+	curFile.Close()
 }
 func doInfo(v string) {
 	if info < conf.Level {
@@ -261,6 +278,9 @@ func doFatal(s string) {
 	if conf.LogToFile {
 		doPrint(s)
 	}
+	if curFile != nil {
+		curFile.Close()
+	}
 	os.Exit(1)
 }
 func Fatal(v ...interface{}) {
@@ -282,7 +302,8 @@ func Fatalln(v ...interface{}) {
 func FlushLogs() {
 
 }
-
+func InitLogs(){
+}
 type Verbose bool
 
 func V(level int32) Verbose {
