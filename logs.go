@@ -40,9 +40,10 @@ var (
 	conf     configuration
 	flog     *log.Logger
 	now      time.Time
-	fileinfo *os.FileInfo
+	curFile  *os.File
+	filename string //  only hava name   without path
 	logmsg   []string
-	pid      = strconv.Itoa(os.Getpid()) + "] "
+	pid      = strconv.Itoa(os.Getpid())
 )
 func loadConf() {
 	conf.Path = filepath.Join("/var/log/opensds")
@@ -97,56 +98,46 @@ func init() {
 		tmp |= log.LUTC
 	}
 	log.SetFlags(tmp)
-	fileinfo = initFile(conf.Path)
+	filename = initFile(conf.Path)
 	logmsg = []string{}
 }
-
-func initFile(path string) (*os.FileInfo) {
+func initFile(path string) string {
 	files, err := ioutil.ReadDir(path)
-	if err != nil {
-		return nil
+	if err != nil || len(files) == 0 {
+		return ""
 	}
-	l := len(files)
-	if l == 0 {
-		return nil
-	}
-	for i := l-1 ; i >= 0 ; i -- {
+	for i := len(files) - 1; i >= 0; i-- {
 		if strings.Contains(files[i].Name(), program) && files[i].Size() < conf.MaxSize {
-			return &files[i]
+			return files[i].Name()
 		}
 	}
-	return nil 
+	return ""
 }
-func getFile()(*os.FileInfo) {
-	if fileinfo != nil {
-		tmpinfo, _ := os.Stat((*fileinfo).Name())
+func getName() string {
+	return fmt.Sprintf("%s_%04d-%02d-%02d_%02d.%02d.%02d.log", program, time.Now().Year(), time.Now().Month(), time.Now().Day(),
+		time.Now().Hour(), time.Now().Minute(), time.Now().Second())
+}
+func getFile() string {
+	var fileinfo *os.FileInfo
+	if filename != "" {
+		tmpinfo, _ := os.Stat(filepath.Join(conf.Path, filename))
 		fileinfo = &tmpinfo
 	}
-	if fileinfo == nil || (*fileinfo).Size() > conf.MaxSize {
-		name := fmt.Sprintf("%s_%04d-%02d-%02d_%02d.%02d.%02d.log",
-			filepath.Join(conf.Path, program),
-			time.Now().Year(),time.Now().Month(),time.Now().Day(),
-			time.Now().Hour(),time.Now().Minute(),time.Now().Second())
-
+	if fileinfo == nil || (*fileinfo).Size() >= conf.MaxSize {
+		name := getName()
 		file, err1 := os.OpenFile(filepath.Join(conf.Path, name), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 		if err1 != nil {
-			fmt.Println("Can not open/create file line133")
-			return nil
+			return ""
 		}
 		file.WriteString(fmt.Sprintf("Log file Create at: %04d-%02d-%02d %02d:%02d:%02d:%06d\n\n",
-			time.Now().Year(),time.Now().Month(),time.Now().Day(),time.Now().Hour(),
-			time.Now().Minute(),time.Now().Second(),time.Now().Nanosecond()/1000))
+			time.Now().Year(), time.Now().Month(), time.Now().Day(), time.Now().Hour(),
+			time.Now().Minute(), time.Now().Second(), time.Now().Nanosecond()/1000))
 
 		file.WriteString(fmt.Sprintf("Binary: Built with %s %s for %s %s\n\n", runtime.Compiler, runtime.Version(), runtime.GOOS, runtime.GOARCH))
 		file.Close()
-		tmpinfo, err2 := os.Stat(name)
-		if err2 != nil {
-			return nil
-			fmt.Println("Can not get fileinfo line 145")
-		}
-		return &tmpinfo
+		return name
 	}
-	return fileinfo
+	return (*fileinfo).Name()
 }
 
 func Lock(f *os.File) error {
@@ -164,14 +155,14 @@ func Unlock(f *os.File) error {
 func outPut() {
 	mu.Lock()
 	defer mu.Unlock()
-	fileinfo = getFile()
-	if fileinfo == nil {
+	filename = getFile()
+	if filename == "" {
 		return
 	}
-	file, err1 := os.OpenFile(filepath.Join(conf.Path,(*fileinfo).Name()), os.O_WRONLY|os.O_APPEND, 0666)
+	file, err1 := os.OpenFile(filepath.Join(conf.Path, filename), os.O_WRONLY|os.O_APPEND, 0666)
 	if err1 != nil {
-		fmt.Println("open log file error",err1)
-		return 
+		fmt.Println("open log file error", err1)
+		return
 	}
 	Lock(file)
 	flog = log.New(file, "", log.Flags())
@@ -192,7 +183,7 @@ func doInfo(v string) {
 		return
 	}
 	_, file, link, _ := runtime.Caller(2)
-	s1 := fmt.Sprint("[INFO]: ", file[strings.LastIndex(file,"opensds"):], " ", link, " [PID:", pid)
+	s1 := fmt.Sprint("[INFO]: ", file[strings.LastIndex(file,"opensds"):], " ", link, " [PID:", pid + "] ")
 	if conf.LogToStdErr {
 		log.Println(s1 + v)
 	}
@@ -217,7 +208,7 @@ func doWarn(v string) {
 		return
 	}
 	_, file, link, _ := runtime.Caller(2)
-	s1 := fmt.Sprint("[WARN]: ", file[strings.LastIndex(file,"opensds"):], " ", link, " [PID:", pid)
+	s1 := fmt.Sprint("[WARN]: ", file[strings.LastIndex(file,"opensds"):], " ", link, " [PID:", pid + "] ")
 	if conf.LogToStdErr {
 		log.Println(s1 + v)
 	}
@@ -242,7 +233,7 @@ func doError(s string) {
 		return
 	}
 	_, file, link, _ := runtime.Caller(2)
-	s1 := fmt.Sprint("[ERRO]: ", file[strings.LastIndex(file,"opensds"):], " ", link, " [PID:", pid)
+	s1 := fmt.Sprint("[ERRO]: ", file[strings.LastIndex(file,"opensds"):], " ", link, " [PID:", pid + "] ")
 	if conf.LogToStdErr {
 		log.Println(s1 + s)
 	}
@@ -267,7 +258,7 @@ func doFatal(s string) {
 		return
 	}
 	_, file, link, _ := runtime.Caller(2)
-	s1 := fmt.Sprint("[FATA]: ", file[strings.LastIndex(file,"opensds"):], " ", link, " [PID:", pid)
+	s1 := fmt.Sprint("[FATA]: ", file[strings.LastIndex(file,"opensds"):], " ", link, " [PID:", pid + "] ")
 	if conf.LogToStdErr {
 		log.Println(s1 + s)
 	}
@@ -275,7 +266,7 @@ func doFatal(s string) {
 		doPrint(s1 + s)
 	}
 	FlushLogs()
-	//	os.Exit(1)
+	os.Exit(1)
 }
 func Fatal(v ...interface{}) {
 	s := fmt.Sprint(v)
